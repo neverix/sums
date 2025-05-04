@@ -29,6 +29,20 @@ wheels = [
 ]
 
 [[package]]
+name = "ao3-api"
+version = "2.3.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "beautifulsoup4" },
+    { name = "lxml" },
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ea/ee/fac4294a45e59adeaa5a10713e9aeaca8462ac1489354b0539f8dcd69966/ao3_api-2.3.1.tar.gz", hash = "sha256:0fa80a905fdd698202369daf09b43c50459c1f473d46bdaf71da5ae46e5dcd76", size = 35009 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a6/05/ca929be16698e355f6fb237fcc1dbc560f0b0dc447e13760c1bc4466f368/ao3_api-2.3.1-py3-none-any.whl", hash = "sha256:bab5a621cdeee387bf7a245fdc263f700d382eb1db2a3ec6c290ec1e61225089", size = 41621 },
+]
+
+[[package]]
 name = "appnope"
 version = "0.1.4"
 source = { registry = "https://pypi.org/simple" }
@@ -816,6 +830,7 @@ name = "sums"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "ao3-api" },
     { name = "beautifulsoup4" },
     { name = "ebooklib" },
     { name = "google-genai" },
@@ -830,6 +845,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "ao3-api", specifier = ">=2.3.1" },
     { name = "beautifulsoup4", specifier = ">=4.13.4" },
     { name = "ebooklib", specifier = ">=0.19" },
     { name = "google-genai", specifier = ">=1.13.0" },
