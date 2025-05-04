@@ -13,12 +13,17 @@ from pathlib import Path
 from rich.prompt import Prompt
 from rich.console import Console
 from rich.table import Table
+from argparse import Namespace
+import requests
 import time
 if Prompt.ask("Load from ao3? (+ социальный кредит)", choices=["y", "n"]) == "y":
     import AO3
+    session = requests.Session()
+    if tor_port := 9050:
+        session.proxies = {'http': f'socks5://localhost:{tor_port}', 'https': f'socks5://localhost:{tor_port}'}
+        # session.proxies = {'http': f'socks5h://localhost:{tor_port}', 'https': f'socks5h://localhost:{tor_port}'}
     url = Prompt.ask("Work URL?")
-    print(AO3.utils.workid_from_url(url))
-    work = AO3.Work(AO3.utils.workid_from_url(url))
+    work = AO3.Work(AO3.utils.workid_from_url(url), session=Namespace(session=session))
     print(work.nchapters)
 else:
     console = Console()
