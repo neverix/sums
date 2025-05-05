@@ -2,6 +2,7 @@ import argparse
 import os
 import time
 from pathlib import Path
+import signal
 
 import dotenv
 from bs4 import BeautifulSoup
@@ -14,6 +15,8 @@ from rich.prompt import Prompt
 from rich.table import Table
 
 def main():
+    signal.signal(signal.SIGTERM, signal.getsignal(signal.SIGINT))
+    
     parser = argparse.ArgumentParser(description='Summarize an EPUB book using Gemini')
     parser.add_argument('--source', type=str, default='~/Downloads', 
                         help='Directory to search for EPUB files')
@@ -26,7 +29,7 @@ def main():
     args = parser.parse_args()
     
     dotenv.load_dotenv()
-    console = Console()
+    console = Console(force_terminal=True)
     
     # Initialize Gemini client
     client = genai.Client(api_key=os.environ["GEMINI_KEY"])
@@ -108,7 +111,7 @@ def main():
         model=args.model,
         config=config,
     )
-    
+        
     prompt = f"""
     You are a book summarizer. You will accurately read a book chapter-by-chapter and write summaries of each chapter,
      taking into account important events, small details and the overall plot.
@@ -132,6 +135,8 @@ def main():
             console.print(text)
         all_responses.append((chapter, responses))
     
+    console.print("Processing started")
+    
     get_response(chat, 0, prompt, console, all_responses)
     
     try:
@@ -142,10 +147,13 @@ def main():
     
     # Save summary
     summary_path = Path(args.output)
+    console.print("Saving summary to", summary_path.absolute())
     summary = "\n\n\n".join(f"# {chapters[i]['title']}\n" + "\n\n".join(responses) 
                            for i, responses in all_responses)
+    console.print(f"{len(summary)} characters, {len(summary.splitlines())} lines")
     summary_path.write_text(summary)
     console.print(f"Summary saved to {summary_path.absolute()}")
+    print(flush=True)
 
 if __name__ == "__main__":
     main()

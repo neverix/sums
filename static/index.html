@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Book Summarizer</title>
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"
+    integrity="sha384-mkQ3/7FUtcGyoppY6bz/PORYoGqOl7/aSUMn2ymDOJcapfS6PHqxhRTMh1RR0Q6+"
+    crossorigin="anonymous"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script><link rel="stylesheet" href="node_modules/@xterm/xterm/css/xterm.css" />
+    <script src="
+    https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js
+    "></script>
+    <link href="
+    https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css
+    " rel="stylesheet">
+    <script src="https://unpkg.com/showdown/dist/showdown.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+    
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+    
+        #fileInput {
+            margin-bottom: 15px;
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-right: 10px;
+            transition: background-color 0.3s;
+        }
+    
+        .btn-primary {
+            background-color: #3498db;
+            color: white;
+        }
+    
+        .btn-primary:hover {
+            background-color: #2980b9;
+        }
+    
+        .btn-danger {
+            background-color: #e74c3c;
+            color: white;
+        }
+    
+        .btn-danger:hover {
+            background-color: #c0392b;
+        }
+    
+        .btn:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+    
+        #progress,
+        #output {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: white;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+    
+        #terminal {
+            margin-top: 20px;
+            background-color: black;
+            border-radius: 4px;
+            padding: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Book Summarizer</h1>
+    <div style="margin-bottom: 20px;">
+        <input type="file" id="fileInput" accept=".epub">
+        <div style="margin-top: 10px;">
+            <label for="skipInput">Skip chapters:</label>
+            <input type="number" id="skipInput" value="0" min="0" style="width: 60px; margin-right: 10px;">
+        </div>
+    </div>
+    <button id="uploadButton" class="btn btn-primary" disabled>Upload</button>
+    <button id="interruptButton" class="btn btn-danger" disabled>Stop Processing</button>
+    
+    <div id="progress"></div>
+    <div id="terminal"></div>
+    <div id="output"></div>
+    <script>
+        $(document).ready(function() {
+            var file_id = null;
+            var converter = new showdown.Converter();
+            var term = new Terminal();
+            term.open(document.getElementById('terminal'));
+            
+            var socket = io();
+            socket.on("pong", function(data) {
+                console.log("ping", data);
+            });
+            socket.emit("ping");
+
+            function set_output(text) {
+                const md = text;
+                const html = converter.makeHtml(md);
+                $('#output').html(html);
+            }
+
+            $('#fileInput').on('change', function() {
+                $('#uploadButton').prop('disabled', false);
+            });
+            
+            $('#uploadButton').click(function() {
+                socket.removeAllListeners();
+
+                var fileInput = $('#fileInput')[0].files[0];
+                if (fileInput) {
+                    var formData = new FormData();
+                    formData.append('file', fileInput);
+                    
+                    $('#progress').text('Uploading...');
+                    
+                    fetch('/upload', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        file_id = data.file_id;
+
+                        if (data.error) {
+                            $('#progress').text('Upload failed');
+                            $('#output').text(data.error);
+                            return;
+                        }
+                        
+                        $('#progress').text('Upload complete');
+                        $('#output').text(data.message);
+                        
+                        socket.emit('start_processing', {
+                            skip: parseInt($('#skipInput').val()) || 0,
+                            file_id
+                        });
+                        
+                        socket.on('processing_started', function(data) {
+                            $('#progress').text('Processing started');
+                            $('#output').text("");
+                            term.clear();
+                            $('#interruptButton').prop('disabled', false);
+                        });
+                        socket.on('update', function(data) {
+                            $('#progress').text('Processing...');
+                            term.writeln(data.line);
+                        });
+                        socket.on('complete', function(data) {
+                            if (data.status == 'interrupted') {
+                                $('#progress').text('Processing interrupted');                                
+                            } else if (data.status == 'complete') {
+                                $('#progress').text('Processing complete');
+                                term.clear();
+                                set_output(data.summary);
+                            }
+                            $('#interruptButton').prop('disabled', true);
+                        });
+                        socket.on('error', function(data) {
+                            $('#progress').text('Processing failed');
+                            set_output(data.message);
+                            $('#interruptButton').prop('disabled', true);
+                        });
+                    })
+                    .catch(error => {
+                        $('#progress').text('Upload failed');
+                        $('#output').text('Network error: ' + error.message);
+                    });
+                }
+            });
+            
+            $('#interruptButton').click(function() {
+                socket.emit('stop_processing', {"file_id": file_id});
+            });
+        });
+    </script>
+</body>
+</html>
