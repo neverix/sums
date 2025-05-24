@@ -5,21 +5,93 @@
     <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"
     integrity="sha384-mkQ3/7FUtcGyoppY6bz/PORYoGqOl7/aSUMn2ymDOJcapfS6PHqxhRTMh1RR0Q6+"
     crossorigin="anonymous"></script>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script><link rel="stylesheet" href="node_modules/@xterm/xterm/css/xterm.css" />
-    <script src="
-    https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js
-    "></script>
-    <link href="
-    https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css
-    " rel="stylesheet">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link rel="stylesheet" href="node_modules/@xterm/xterm/css/xterm.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css" rel="stylesheet">
     <script src="https://unpkg.com/showdown/dist/showdown.min.js"></script>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+            display: flex;
+        }
+
+        #sidebar {
+            width: 250px;
+            height: 100vh;
+            background-color: #2c3e50;
+            color: white;
+            padding: 20px;
+            overflow-y: auto;
+            transition: width 0.3s;
+            position: sticky;
+            top: 0;
+        }
+
+        #sidebar.collapsed {
+            width: 50px;
+        }
+
+        #sidebar-toggle {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            font-size: 20px;
+        }
+
+        #sidebar h2 {
+            margin-top: 0;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #34495e;
+        }
+
+        .summary-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .summary-item {
+            padding: 10px;
+            margin: 5px 0;
+            background-color: #34495e;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            font-size: 0.9em;
+        }
+
+        .summary-item .timestamp {
+            font-size: 0.8em;
+            color: #95a5a6;
+            margin-bottom: 5px;
+        }
+
+        .summary-item .title {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .summary-item:hover {
+            background-color: #2c3e50;
+        }
+
+        .summary-item.active {
+            background-color: #3498db;
+        }
+
+        #main-content {
+            flex: 1;
+            padding: 20px;
             max-width: 800px;
             margin: 0 auto;
-            padding: 20px;
-            background-color: #f5f5f5;
         }
     
         h1 {
@@ -68,6 +140,24 @@
             background-color: #95a5a6;
             cursor: not-allowed;
         }
+
+        .btn-share {
+            background-color: #27ae60;
+            color: white;
+        }
+
+        .btn-share:hover {
+            background-color: #219a52;
+        }
+
+        .share-link {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            display: none;
+        }
     
         #progress,
         #output {
@@ -87,20 +177,29 @@
     </style>
 </head>
 <body>
-    <h1>Book Summarizer</h1>
-    <div style="margin-bottom: 20px;">
-        <input type="file" id="fileInput" accept=".epub">
-        <div style="margin-top: 10px;">
-            <label for="skipInput">Skip chapters:</label>
-            <input type="number" id="skipInput" value="0" min="0" style="width: 60px; margin-right: 10px;">
-        </div>
+    <div id="sidebar">
+        <button id="sidebar-toggle">≡</button>
+        <h2>Past Summaries</h2>
+        <ul class="summary-list" id="summaryList"></ul>
     </div>
-    <button id="uploadButton" class="btn btn-primary" disabled>Upload</button>
-    <button id="interruptButton" class="btn btn-danger" disabled>Stop Processing</button>
-    
-    <div id="progress"></div>
-    <div id="terminal"></div>
-    <div id="output"></div>
+    <div id="main-content">
+        <h1>Book Summarizer</h1>
+        <div style="margin-bottom: 20px;">
+            <input type="file" id="fileInput" accept=".epub">
+            <div style="margin-top: 10px;">
+                <label for="skipInput">Skip chapters:</label>
+                <input type="number" id="skipInput" value="0" min="0" style="width: 60px; margin-right: 10px;">
+            </div>
+        </div>
+        <button id="uploadButton" class="btn btn-primary" disabled>Upload</button>
+        <button id="interruptButton" class="btn btn-danger" disabled>Stop Processing</button>
+        <button id="shareButton" class="btn btn-share" disabled>Share Summary</button>
+        <div id="shareLink" class="share-link"></div>
+        
+        <div id="progress"></div>
+        <div id="terminal"></div>
+        <div id="output"></div>
+    </div>
     <script>
         $(document).ready(function() {
             var file_id = null;
@@ -114,14 +213,145 @@
             });
             socket.emit("ping");
 
+            // Sidebar toggle functionality
+            $('#sidebar-toggle').click(function() {
+                $('#sidebar').toggleClass('collapsed');
+            });
+
+            // Load saved summaries from localStorage
+            function loadSavedSummaries() {
+                const summaries = JSON.parse(localStorage.getItem('summaries') || '[]');
+                const summaryList = $('#summaryList');
+                summaryList.empty();
+                
+                // Sort summaries by timestamp, most recent first
+                summaries.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                
+                summaries.forEach((summary, index) => {
+                    const date = new Date(summary.timestamp);
+                    const formattedDate = date.toLocaleString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                    
+                    const li = $('<li>')
+                        .addClass('summary-item')
+                        .click(function() {
+                            $('.summary-item').removeClass('active');
+                            $(this).addClass('active');
+                            set_output(summary.content);
+                        });
+                    
+                    const timestamp = $('<div>')
+                        .addClass('timestamp')
+                        .text(formattedDate);
+                    
+                    const title = $('<div>')
+                        .addClass('title')
+                        .text(summary.title || `Summary ${index + 1}`);
+                    
+                    li.append(timestamp, title);
+                    summaryList.append(li);
+                });
+            }
+
+            // Share button functionality
+            $('#shareButton').click(function() {
+                const activeSummary = $('.summary-item.active');
+                if (!activeSummary.length) return;
+
+                const summaries = JSON.parse(localStorage.getItem('summaries') || '[]');
+                const currentTitle = activeSummary.find('.title').text();
+                
+                // Find the most recent complete summary for this title
+                const summary = summaries
+                    .filter(s => s.title === currentTitle && !s.isPartial)
+                    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
+                
+                if (!summary || !summary.content) return;
+
+                $('#shareButton').prop('disabled', true);
+                $('#shareButton').text('Sharing...');
+                $('#shareLink').hide();
+                
+                fetch('/share', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ content: summary.content })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.url) {
+                        const shareLink = $('#shareLink');
+                        shareLink.html(`<a href="${data.url}" target="_blank">${data.url}</a>`);
+                        shareLink.show();
+                    } else {
+                        alert('Failed to share summary');
+                    }
+                })
+                .catch(error => {
+                    alert('Error sharing summary: ' + error.message);
+                })
+                .finally(() => {
+                    $('#shareButton').prop('disabled', false);
+                    $('#shareButton').text('Share Summary');
+                });
+            });
+
+            // Save summary to localStorage
+            function saveSummary(content, isPartial = false) {
+                const summaries = JSON.parse(localStorage.getItem('summaries') || '[]');
+                const title = $('#fileInput')[0].files[0]?.name || `Summary ${summaries.length + 1}`;
+                const timestamp = new Date().toISOString();
+                
+                if (isPartial) {
+                    // For partial updates, find the most recent summary with the same title
+                    const lastSummary = summaries.find(s => s.title === title && s.isPartial);
+                    if (lastSummary) {
+                        // Update the existing partial summary
+                        lastSummary.content = content;
+                        lastSummary.timestamp = timestamp;
+                    } else {
+                        // Create a new partial summary
+                        summaries.push({
+                            title: title,
+                            content: content,
+                            timestamp: timestamp,
+                            isPartial: true
+                        });
+                    }
+                } else {
+                    // For complete summaries, always create a new entry
+                    summaries.push({
+                        title: title,
+                        content: content,
+                        timestamp: timestamp,
+                        isPartial: false
+                    });
+                }
+                
+                localStorage.setItem('summaries', JSON.stringify(summaries));
+                loadSavedSummaries();
+            }
+
             function set_output(text) {
                 const md = text;
                 const html = converter.makeHtml(md);
                 $('#output').html(html);
+                // Enable share button when there's content
+                $('#shareButton').prop('disabled', !text);
+                // Clear share link when content changes
+                $('#shareLink').hide();
             }
 
             $('#fileInput').on('change', function() {
                 $('#uploadButton').prop('disabled', false);
+                // Clear share link when new file is selected
+                $('#shareLink').hide();
             });
             
             $('#uploadButton').click(function() {
@@ -161,10 +391,15 @@
                             $('#output').text("");
                             term.clear();
                             $('#interruptButton').prop('disabled', false);
+                            // Initialize a new partial summary
+                            saveSummary("", true);
                         });
                         socket.on('update', function(data) {
                             $('#progress').text('Processing...');
                             term.writeln(data.line);
+                            // Update the partial summary with the current output
+                            const currentOutput = $('#output').text();
+                            saveSummary(currentOutput, true);
                         });
                         socket.on('complete', function(data) {
                             if (data.status == 'interrupted') {
@@ -173,6 +408,8 @@
                                 $('#progress').text('Processing complete');
                                 term.clear();
                                 set_output(data.summary);
+                                // Save the final complete summary
+                                saveSummary(data.summary, false);
                             }
                             $('#interruptButton').prop('disabled', true);
                         });
@@ -192,6 +429,9 @@
             $('#interruptButton').click(function() {
                 socket.emit('stop_processing', {"file_id": file_id});
             });
+
+            // Load saved summaries on page load
+            loadSavedSummaries();
         });
     </script>
 </body>

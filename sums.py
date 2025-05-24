@@ -129,7 +129,11 @@ def main():
 
     def get_response(chat, chapter, prompt, console, all_responses):
         responses = []
-        for part in chat.send_message([prompt]).candidates[0].content.parts:
+        parts = chat.send_message([prompt]).candidates[0].content.parts
+        if not parts:
+            console.print("Model didn't return any response")
+            return get_response(chat, chapter, prompt, console, all_responses)
+        for part in parts:
             text = part.text
             responses.append(text)
             console.print(text)

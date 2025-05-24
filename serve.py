@@ -10,6 +10,7 @@
 #         manager.disconnect(websocket)
 #         await manager.broadcast(f"Client #{client_id} left the chat")
 
+import requests
 import base64
 import os
 import tempfile
@@ -227,6 +228,36 @@ def download(session_id):
         return "File not found", 404
     
     return send_file(session['output_file'], as_attachment=True, download_name="summary.txt")
+
+@app.route('/share', methods=['POST'])
+def share_summary():
+    try:
+        data = request.get_json()
+        if not data or 'content' not in data:
+            return {'error': 'No content provided'}, 400
+        
+        content = data['content']
+        url = upload_to_0x0st(content)
+        return {'url': url}
+    except Exception as e:
+        return {'error': str(e)}, 500
+
+def upload_to_0x0st(content, filename="document.md"):
+    """Upload markdown content to 0x0.st"""
+    print(f"Uploading to 0x0.st...")
+    
+    try:
+        url = "https://0x0.st"
+        
+        # Send the content directly as a file
+        files = {'file': (filename, content.encode('utf-8'), 'text/markdown')}
+        headers = {'User-Agent': 'curl/7.68.0'}  # Some services check user agent
+        response = requests.post(url, files=files, headers=headers)
+        response.raise_for_status()
+        return response.text.strip()
+    except Exception as e:
+        print(f"Upload failed: {e}")
+        raise
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)
